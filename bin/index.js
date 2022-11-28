@@ -44,6 +44,7 @@ fs.readdir(".", async (err, files) => {
       }).exitCode = 1;
     }
   });
+  console.log("\n\n")
   // Ideally these things would be better placed outside the readdir callback, but that
   // would cause issue with the promises of the queries
   client.connect();
