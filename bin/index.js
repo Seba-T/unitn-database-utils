@@ -2,7 +2,8 @@
 
 const { Client } = require("pg");
 require("dotenv").config();
-const { exec } = require("child_process");
+const util = require("util");
+const exec = util.promisify(require("child_process").exec);
 
 const fs = require("fs");
 
@@ -24,37 +25,31 @@ const dirs = new Array();
 
 const salt = "_" + 97 + Math.floor(Math.random() * 26);
 
-fs.readdir(".", async (err, files) => {
-  if (err) throw err;
-  files.forEach((file) => {
-    if (
-      file.slice(0, 4) == "SQL_" &&
-      file.substring(file.length - 4) == ".zip"
-    ) {
-      const newDirName = file.substring(0, file.length - 4) + salt;
-      dirs.push(newDirName);
-      fs.mkdirSync(newDirName);
-      fs.copyFileSync(file, newDirName + "/" + file);
-      const cwd = { cwd: process.cwd() + "/" + newDirName };
-      exec(`unzip ${file}`, cwd, (error, stdout, stderr) => {
-        if (error) {
-          console.log(`error: ${error.message}`);
-          return;
-        }
-      }).exitCode = 1;
-    }
-  });
-  console.log("\n\n")
-  // Ideally these things would be better placed outside the readdir callback, but that
-  // would cause issue with the promises of the queries
-  client.connect();
-  const queryPromises = new Array();
+const files = fs.readdirSync(".");
+
+const unzipPromises = new Array();
+
+files.forEach((file) => {
+  if (file.slice(0, 4) == "SQL_" && file.substring(file.length - 4) == ".zip") {
+    const newDirName = file.substring(0, file.length - 4) + salt;
+    dirs.push(newDirName);
+    fs.mkdirSync(newDirName);
+    fs.copyFileSync(file, newDirName + "/" + file);
+    const cwd = { cwd: process.cwd() + "/" + newDirName };
+    unzipPromises.push(exec(`unzip ${file}`, cwd));
+  }
+});
+
+// Ideally these things would be better placed outside the readdir callback, but that
+// would cause issue with the promises of the queries
+client.connect();
+const queryPromises = new Array();
+
+Promise.all(unzipPromises).then(() => {
   for (let i = 1; i <= 10; i++) {
     let queries = new Array();
     dirs.forEach((dirName) => {
-      const path = `./${dirName}/query_${i}.sql`;
-      console.log("Now reading: ", path);
-
+      const path = `${process.cwd()}/${dirName}/query_${i}.sql`;
       let query = fs
         .readFileSync(path, {
           encoding: "utf-8",
@@ -65,6 +60,7 @@ fs.readdir(".", async (err, files) => {
         author: dirName.substring(4, 10),
       });
     });
+    let outcome = true;
     for (let t = 0; t < queries.length; t++) {
       for (let k = 0; k < queries.length; k++) {
         if (k == t) continue;
@@ -72,15 +68,10 @@ fs.readdir(".", async (err, files) => {
           client
             .query(produceQuery(queries[t].body, queries[k].body))
             .then((res) => {
-              console.log(
-                `Query ${i}: successfully parsed, (${queries[t].author} against ${queries[k].author}) `
-              );
               if (res.rowCount > 0) {
-                const color =
-                  ";background: white; color: red; padding: 3px; border-radius: 5px;";
+                outcome = false;
                 console.log(
-                  `%cQuery ${i}: detected differences between ${queries[t].author} and ${queries[k].author}, logging...`,
-                  color
+                  `Query ${i}: detected differences between ${queries[t].author} and ${queries[k].author}, logging...`
                 );
                 const out = res.rows.reduce(
                   (prev, current) => prev + `\n${JSON.stringify(current)}`,
@@ -90,11 +81,10 @@ fs.readdir(".", async (err, files) => {
                   `./query_${i}-${queries[t].author}-${queries[k].author}.txt`,
                   out
                 );
-              } else {
-                console.log(`No differences to report! \n\n`);
               }
             })
             .catch(() => {
+              outcome = false;
               console.log(
                 `error while trying to parse query ${1}, specifically ${
                   queries[t].author
@@ -126,6 +116,7 @@ fs.readdir(".", async (err, files) => {
         );
       }
     }
+    if (outcome) console.log(`Query ${i} is all set for everyone!`);
   }
   dirs.forEach((dir) => {
     fs.rm(dir, { force: true, recursive: true }, (err) => {
@@ -135,12 +126,12 @@ fs.readdir(".", async (err, files) => {
         );
     });
   });
+});
 
-  Promise.all(queryPromises).finally(() => {
-    setTimeout(() => {
-      client.end();
-    }, 1000);
-  });
+Promise.all(queryPromises).finally(() => {
+  setTimeout(() => {
+    client.end();
+  }, 1000);
 });
 
 function produceQuery(body1, body2) {
