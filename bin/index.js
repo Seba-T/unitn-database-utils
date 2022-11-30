@@ -1,5 +1,9 @@
 #! /usr/bin/env node
 
+function handler() {}
+
+process.on("SIGINT");
+
 const { Client } = require("pg");
 require("dotenv").config();
 const util = require("util");
@@ -82,8 +86,9 @@ Promise.all(unzipPromises).then(async () => {
             );
           }
         } catch (e) {
+          outcome = false;
+
           if (e.message == "first") {
-            outcome = false;
             console.log(
               `Error: ${queries[t].author}'s query ${i} is missing the final ';'`
             );
@@ -91,15 +96,12 @@ Promise.all(unzipPromises).then(async () => {
             continue ext;
           }
           if (e.message == "second") {
-            outcome = false;
-
             console.log(
               `Error: ${queries[k].author}'s query ${i} is missing the final ';'`
             );
             continue int;
           }
 
-          outcome = false;
           console.log(
             `QUERY ${i} ERROR!, specifically ${queries[t].author} against ${queries[k].author}. Now testing the queries alone...`
           );
@@ -130,13 +132,13 @@ Promise.all(unzipPromises).then(async () => {
               "It seems that the single queries work on their own, checking the differences..."
             );
             if (outcomes[0].fields.length == outcomes[1].fields.length) {
-              for (let i = 0; i < outcomes[0].fields.length; i++) {
+              for (let a = 0; a < outcomes[0].fields.length; a++) {
                 if (
-                  outcomes[0].fields[0].dataTypeID !=
-                  outcomes[1].fields[i].dataTypeID
+                  outcomes[0].fields[a].dataTypeID !=
+                  outcomes[1].fields[a].dataTypeID
                 ) {
                   console.log(
-                    `It seems that the same column has two different data types (comparing column ${outcomes[0].fields[0].name} with ${outcomes[1].fields[0].name})`
+                    `It seems that the same column has two different data types (comparing column ${outcomes[0].fields[a].name} with ${outcomes[1].fields[a].name})`
                   );
                 }
               }
