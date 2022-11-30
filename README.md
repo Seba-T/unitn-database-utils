@@ -54,3 +54,5 @@ so if the query fails it could be due the columns returned by the single queries
 
 The script should be solid enough to handle malformed input, but as a general rule of thumb note that if it's crashing it's probably your queries'fault, usually the final `;` is missing or you are returning the wrong number/order of columns.
 
+### NOTES 
+The script creates lots of temporary directories where it unzips the zip archives, they *should* get removed after each run, if they don't get removed because it crashes feel free to remove them yourself.

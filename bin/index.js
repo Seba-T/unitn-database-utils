@@ -60,9 +60,9 @@ Promise.all(unzipPromises).then(async () => {
       });
     });
     let outcome = true;
-    for (let t = 0; t < queries.length; t++) {
-      for (let k = 0; k < queries.length; k++) {
-        if (k == t) continue;
+    ext: for (let t = 0; t < queries.length; t++) {
+      int: for (let k = 0; k < queries.length; k++) {
+        if (k == t) continue int;
         try {
           const res = await client.query(
             produceQuery(queries[t].body, queries[k].body)
@@ -82,9 +82,26 @@ Promise.all(unzipPromises).then(async () => {
             );
           }
         } catch (e) {
+          if (e.message == "first") {
+            outcome = false;
+            console.log(
+              `Error: ${queries[t].author}'s query ${i} is missing the final ';'`
+            );
+
+            continue ext;
+          }
+          if (e.message == "second") {
+            outcome = false;
+
+            console.log(
+              `Error: ${queries[k].author}'s query ${i} is missing the final ';'`
+            );
+            continue int;
+          }
+
           outcome = false;
           console.log(
-            `QUERY ${i} ERROR!!, specifically ${queries[t].author} against ${queries[k].author}. Now testing the queries alone...`
+            `QUERY ${i} ERROR!, specifically ${queries[t].author} against ${queries[k].author}. Now testing the queries alone...`
           );
           const outcomes = new Array();
           try {
@@ -124,13 +141,13 @@ Promise.all(unzipPromises).then(async () => {
                 }
               }
             } else {
-              console.log("The queries have a different number of fields!");
-              console.log(
+              console.error("The queries have a different number of fields!");
+              console.error(
                 `${queries[t].author}'s query has: ${outcomes[0].fields
                   .map((el) => el.name)
                   .join(", ")}`
               );
-              console.log(
+              console.error(
                 `${queries[k].author}'s query has: ${outcomes[1].fields
                   .map((el) => el.name)
                   .join(", ")}`
@@ -141,7 +158,7 @@ Promise.all(unzipPromises).then(async () => {
       }
     }
     if (outcome) console.log(`Query ${i} is all set for everyone!`);
-    console.log("\n\n");
+    console.log("\n ================================================\n ");
   }
   dirs.forEach((dir) => {
     fs.rm(dir, { force: true, recursive: true }, (err) => {
@@ -155,6 +172,9 @@ Promise.all(unzipPromises).then(async () => {
 });
 
 function produceQuery(body1, body2) {
+  if (body1.slice(-1) != ";") throw new Error("first");
+  if (body2.slice(-1) != ";") throw new Error("second");
+
   return `(${body1.substring(
     0,
     body1.length - 1
