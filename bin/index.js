@@ -8,7 +8,7 @@ const exec = util.promisify(require("child_process").exec);
 const fs = require("fs");
 
 const user = process.env.DB_USER || null;
-const host = process.env.DB_HOST || null;
+const host = process.env.DB_HOST || "localhost";
 const database = process.env.DATABASE || null;
 const password = process.env.PASSWORD || null;
 const port = process.env.PORT || 5432;
@@ -43,7 +43,6 @@ files.forEach((file) => {
 // Ideally these things would be better placed outside the readdir callback, but that
 // would cause issue with the promises of the queries
 client.connect();
-const queryPromises = new Array();
 
 Promise.all(unzipPromises).then(async () => {
   for (let i = 1; i <= 10; i++) {
@@ -64,60 +63,85 @@ Promise.all(unzipPromises).then(async () => {
     for (let t = 0; t < queries.length; t++) {
       for (let k = 0; k < queries.length; k++) {
         if (k == t) continue;
-        queryPromises.push(
-          client
-            .query(produceQuery(queries[t].body, queries[k].body))
-            .then((res) => {
-              if (res.rowCount > 0) {
-                outcome = false;
-                console.log(
-                  `Query ${i}: detected differences between ${queries[t].author} and ${queries[k].author}, logging...`
-                );
-                const out = res.rows.reduce(
-                  (prev, current) => prev + `\n${JSON.stringify(current)}`,
-                  new String()
-                );
-                fs.writeFileSync(
-                  `./query_${i}-${queries[t].author}-${queries[k].author}.txt`,
-                  out
-                );
+        try {
+          const res = await client.query(
+            produceQuery(queries[t].body, queries[k].body)
+          );
+          if (res.rowCount > 0) {
+            outcome = false;
+            console.log(
+              `Query ${i}: detected differences between ${queries[t].author} and ${queries[k].author}, logging...`
+            );
+            const out = res.rows.reduce(
+              (prev, current) => prev + `\n${JSON.stringify(current)}`,
+              new String()
+            );
+            fs.writeFileSync(
+              `./query_${i}-${queries[t].author}-${queries[k].author}.txt`,
+              out
+            );
+          }
+        } catch (e) {
+          outcome = false;
+          console.log(
+            `QUERY ${i} ERROR!!, specifically ${queries[t].author} against ${queries[k].author}. Now testing the queries alone...`
+          );
+          const outcomes = new Array();
+          try {
+            const result = await client.query(queries[t].body);
+            outcomes.push(result);
+          } catch (err) {
+            console.log(
+              `${queries[t].author}'s query ${i} is faulty!`,
+              err.toString().split("\n")[0]
+            );
+          }
+
+          try {
+            const result = await client.query(queries[k].body);
+            outcomes.push(result);
+          } catch (err) {
+            faulty = true;
+            console.log(
+              `${queries[k].author}'s query ${i} is faulty!`,
+              err.toString().split("\n")[0]
+            );
+          }
+          if (outcomes.length == 2) {
+            //it means both query works
+            console.log(
+              "It seems that the single queries work on their own, checking the differences..."
+            );
+            if (outcomes[0].fields.length == outcomes[1].fields.length) {
+              for (let i = 0; i < outcomes[0].fields.length; i++) {
+                if (
+                  outcomes[0].fields[0].dataTypeID !=
+                  outcomes[1].fields[i].dataTypeID
+                ) {
+                  console.log(
+                    `It seems that the same column has two different data types (comparing column ${outcomes[0].fields[0].name} with ${outcomes[1].fields[0].name})`
+                  );
+                }
               }
-            })
-            .catch(() => {
-              outcome = false;
+            } else {
+              console.log("The queries have a different number of fields!");
               console.log(
-                `error while trying to parse query ${1}, specifically ${
-                  queries[t].author
-                } against ${
-                  queries[k].author
-                }\n Now I'll try to look into the specific queries, wish me luck`
+                `${queries[t].author}'s query has: ${outcomes[0].fields
+                  .map((el) => el.name)
+                  .join(", ")}`
               );
-              queryPromises.push(
-                client
-                  .query(queries[t].body)
-                  .then(() =>
-                    console.log(`${queries[t].author}'s query works!`)
-                  )
-                  .catch((err) => {
-                    console.log(`${queries[t].author}'s query is faulty!`, err);
-                  })
+              console.log(
+                `${queries[k].author}'s query has: ${outcomes[1].fields
+                  .map((el) => el.name)
+                  .join(", ")}`
               );
-              queryPromises.push(
-                client
-                  .query(queries[k].body)
-                  .then(() =>
-                    console.log(`${queries[k].author}'s query works!`)
-                  )
-                  .catch((err) => {
-                    console.log(`${queries[k].author}'s query is faulty!`, err);
-                  })
-              );
-            })
-        );
-        // console.log(queryPromises);
+            }
+          }
+        }
       }
     }
     if (outcome) console.log(`Query ${i} is all set for everyone!`);
+    console.log("\n\n");
   }
   dirs.forEach((dir) => {
     fs.rm(dir, { force: true, recursive: true }, (err) => {
@@ -127,11 +151,7 @@ Promise.all(unzipPromises).then(async () => {
         );
     });
   });
-  Promise.all(queryPromises).finally(() => {
-    setTimeout(() => {
-      client.end();
-    }, 1000);
-  });
+  client.end();
 });
 
 function produceQuery(body1, body2) {
