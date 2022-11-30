@@ -45,7 +45,7 @@ files.forEach((file) => {
 client.connect();
 const queryPromises = new Array();
 
-Promise.all(unzipPromises).then(() => {
+Promise.all(unzipPromises).then(async () => {
   for (let i = 1; i <= 10; i++) {
     let queries = new Array();
     dirs.forEach((dirName) => {
@@ -114,6 +114,7 @@ Promise.all(unzipPromises).then(() => {
               );
             })
         );
+        // console.log(queryPromises);
       }
     }
     if (outcome) console.log(`Query ${i} is all set for everyone!`);
@@ -126,12 +127,11 @@ Promise.all(unzipPromises).then(() => {
         );
     });
   });
-});
-
-Promise.all(queryPromises).finally(() => {
-  setTimeout(() => {
-    client.end();
-  }, 1000);
+  Promise.all(queryPromises).finally(() => {
+    setTimeout(() => {
+      client.end();
+    }, 1000);
+  });
 });
 
 function produceQuery(body1, body2) {
