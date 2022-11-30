@@ -26,6 +26,8 @@ const database = process.env.DATABASE || null;
 const password = process.env.PASSWORD || null;
 const port = process.env.PORT || 5432;
 
+const dirs = new Array();
+
 try {
   const client = new Client({
     user,
@@ -34,8 +36,6 @@ try {
     password,
     port,
   });
-
-  const dirs = new Array();
 
   const salt = "_" + 97 + Math.floor(Math.random() * 26);
 
