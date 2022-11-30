@@ -1,8 +1,17 @@
 #! /usr/bin/env node
 
-function handler() {}
+function cleanDirs() {
+  dirs.forEach((dir) => {
+    fs.rm(dir, { force: true, recursive: true }, (err) => {
+      if (err)
+        console.log(
+          "We had an error while trying to delete the folder: " + err
+        );
+    });
+  });
+}
 
-process.on("SIGINT");
+process.on("SIGINT", cleanDirs);
 
 const { Client } = require("pg");
 require("dotenv").config();
@@ -162,14 +171,7 @@ Promise.all(unzipPromises).then(async () => {
     if (outcome) console.log(`Query ${i} is all set for everyone!`);
     console.log("\n ================================================\n ");
   }
-  dirs.forEach((dir) => {
-    fs.rm(dir, { force: true, recursive: true }, (err) => {
-      if (err)
-        console.log(
-          "We had an error while trying to delete the folder: " + err
-        );
-    });
-  });
+  cleanDirs();
   client.end();
 });
 
